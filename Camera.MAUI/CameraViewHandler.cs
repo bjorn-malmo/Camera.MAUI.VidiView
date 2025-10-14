@@ -1,4 +1,5 @@
-﻿using Microsoft.Maui.Handlers;
+﻿using Microsoft.Extensions.Logging;
+using Microsoft.Maui.Handlers;
 #if IOS || MACCATALYST
 using PlatformView = Camera.MAUI.Platforms.Apple.MauiCameraView;
 #elif ANDROID
@@ -75,12 +76,12 @@ internal partial class CameraViewHandler : ViewHandler<CameraView, PlatformView>
         }
         return Task.Run(() => { return CameraResult.AccessError; });
     }
-    public Task<CameraResult> StartRecordingAsync(string file, Size Resolution)
+    public Task<CameraResult> StartRecordingAsync(string file, Size Resolution, OtherRecordingParameters otherRecordingParameters)
     {
         if (PlatformView != null)
         {
-#if WINDOWS || ANDROID || IOS
-            return PlatformView.StartRecordingAsync(file, Resolution);
+#if ANDROID || IOS
+            return PlatformView.StartRecordingAsync(file, Resolution, otherRecordingParameters);
 #endif
         }
         return Task.Run(() => { return CameraResult.AccessError; });
@@ -119,26 +120,24 @@ internal partial class CameraViewHandler : ViewHandler<CameraView, PlatformView>
         }
         return null;
     }
-    public Task<Stream> TakePhotoAsync(ImageFormat imageFormat)
+    public Task<Stream> TakePhotoAsync(ImageFormat imageFormat, int? rotation)
     {
         if (PlatformView != null)
         {
-#if  IOS || MACCATALYST || WINDOWS
-            return PlatformView.TakePhotoAsync(imageFormat);
+#if  IOS
+            return PlatformView.TakePhotoAsync(imageFormat, rotation);
 #elif ANDROID
-            return Task.Run(() => { return PlatformView.TakePhotoAsync(imageFormat); });
+            return Task.Run(() => { return PlatformView.TakePhotoAsync(imageFormat, rotation); });
 #endif
         }
         return Task.Run(() => { Stream result = null; return result; });
     }
-    public Task<bool> SaveSnapShot(ImageFormat imageFormat, string SnapFilePath)
+    public Task<bool> SaveSnapShot(ImageFormat imageFormat, string SnapFilePath, int? rotation)
     {
         if (PlatformView != null)
         {
-#if WINDOWS
-            return PlatformView.SaveSnapShot(imageFormat, SnapFilePath);
-#elif ANDROID || IOS || MACCATALYST
-            var task = new Task<bool>(() => { return PlatformView.SaveSnapShot(imageFormat, SnapFilePath); });
+#if ANDROID || IOS 
+            var task = new Task<bool>(() => { return PlatformView.SaveSnapShot(imageFormat, SnapFilePath, rotation); });
             task.Start();
             return task;
 #endif
@@ -157,4 +156,21 @@ internal partial class CameraViewHandler : ViewHandler<CameraView, PlatformView>
         PlatformView?.DisposeControl();
 #endif
     }
+
+    public void SetLogger(ILoggerFactory loggerFactory)
+    {
+#if ANDROID || IOS
+        PlatformView?.SetLogger(loggerFactory);
+#endif
+    }
+
+    public bool SetFocus(Microsoft.Maui.Graphics.Rect rect)
+    {
+#if ANDROID || IOS
+        return PlatformView?.SetFocus(rect) ?? false;
+#else
+        return false;
+#endif
+    }
+
 }
