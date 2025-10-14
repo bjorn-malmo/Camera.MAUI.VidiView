@@ -1,4 +1,6 @@
 ﻿using Camera.MAUI.ZXingHelper;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using System.Collections.ObjectModel;
 
 #if IOS || MACCATALYST
@@ -13,8 +15,27 @@ using DecodeDataType = System.Object;
 
 namespace Camera.MAUI;
 
+public record RecordingParameters
+{
+    /// <summary>
+    /// Record audio along with video
+    /// </summary>
+    public bool RecordAudio { get; init; }
+    /// <summary>
+    /// Maximum frames per second
+    /// </summary>
+    public required int MaxFrameRate { get; init; }
+    /// <summary>
+    /// The allowed video codecs
+    /// </summary>
+    public IEnumerable<string> AllowedVideoCodecs { get; init; } = null;
+}
+
 public class CameraView : View, ICameraView
 {
+    internal const float RestrictMaximumZoomFactor = 16f;
+    internal const float RestrictMinimumZoomFactor = 0.5f;
+
     public static readonly BindableProperty SelfProperty = BindableProperty.Create(nameof(Self), typeof(CameraView), typeof(CameraView), null, BindingMode.OneWayToSource);
     public static readonly BindableProperty FlashModeProperty = BindableProperty.Create(nameof(FlashMode), typeof(FlashMode), typeof(CameraView), FlashMode.Disabled);
     public static readonly BindableProperty TorchEnabledProperty = BindableProperty.Create(nameof(TorchEnabled), typeof(bool), typeof(CameraView), false);
@@ -444,7 +465,7 @@ public class CameraView : View, ICameraView
     /// <paramref name="file"/> Full path to file where video will be stored.
     /// <paramref name="Resolution"/> Sets the Video Resolution. It must be in Camera.AvailableResolutions. If width or height is 0, max resolution will be taken.
     /// </summary>
-    public async Task<CameraResult> StartRecordingAsync(string file, Size Resolution = default)
+    public async Task<CameraResult> StartRecordingAsync(string file, Size Resolution = default, RecordingParameters otherRecordingParameters = null)
     {
         CameraResult result = CameraResult.AccessError;
         if (Camera != null)
@@ -456,7 +477,7 @@ public class CameraView : View, ICameraView
             }
             if (Handler != null && Handler is CameraViewHandler handler)
             {
-                result = await handler.StartRecordingAsync(file, Resolution);
+                result = await handler.StartRecordingAsync(file, Resolution, otherRecordingParameters);
                 if (result == CameraResult.Success)
                 {
                     BarCodeResults = null;
@@ -499,11 +520,11 @@ public class CameraView : View, ICameraView
     /// </summary>
     /// <param name="imageFormat">The capture image format</param>
     /// <returns>A stream with the photo info</returns>
-    public async Task<Stream> TakePhotoAsync(ImageFormat imageFormat = ImageFormat.JPEG)
+    public async Task<Stream> TakePhotoAsync(ImageFormat imageFormat, int? rotation)
     {
         if (Handler != null && Handler is CameraViewHandler handler)
         {
-            return await handler.TakePhotoAsync(imageFormat);
+            return await handler.TakePhotoAsync(imageFormat, rotation);
         }
         return null;
     }
@@ -524,15 +545,16 @@ public class CameraView : View, ICameraView
     /// </summary>
     /// <param name="imageFormat">The capture image format</param>
     /// <param name="SnapFilePath">Full path for the file</param>
-    public async Task<bool> SaveSnapShot(ImageFormat imageFormat, string SnapFilePath)
+    public async Task<bool> SaveSnapShot(ImageFormat imageFormat, string SnapFilePath, int? rotation)
     {
         bool result = false;
         if (Handler != null && Handler is CameraViewHandler handler)
         {
-            result = await handler.SaveSnapShot(imageFormat, SnapFilePath);
+            result = await handler.SaveSnapShot(imageFormat, SnapFilePath, rotation);
         }
         return result;
     }
+
     /// <summary>
     /// Force execute the camera autofocus trigger.
     /// </summary>
@@ -593,5 +615,31 @@ public class CameraView : View, ICameraView
             }
         }
         return true;
+    }
+
+    /// <summary>
+    /// Inject logger factory
+    /// </summary>
+    /// <param name="loggerFactory"></param>
+    public void SetLogger(ILoggerFactory loggerFactory)
+    {
+        if (Handler is CameraViewHandler handler)
+        {
+            handler.SetLogger(loggerFactory);
+        }
+    }
+
+    /// <summary>
+    /// Specify the focus point
+    /// </summary>
+    /// <param name="rect"></param>
+    /// <returns></returns>
+    public bool SetFocus(Microsoft.Maui.Graphics.Rect rect)
+    {
+        if (Handler is CameraViewHandler handler)
+        {
+            return handler.SetFocus(rect);
+        }
+        return false;
     }
 }
