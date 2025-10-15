@@ -188,8 +188,11 @@ internal class MauiCameraView: GridLayout
                         else
                             mediaRecorder = new MediaRecorder();
 
-                        //audioManager.Mode = Mode.Normal;
-                        //mediaRecorder.SetAudioSource(AudioSource.Mic);
+                        if (recordAudio)
+                        {
+                            audioManager.Mode = Mode.Normal;
+                            mediaRecorder.SetAudioSource(AudioSource.Mic);
+                        }
                         mediaRecorder.SetVideoSource(VideoSource.Surface);
                         mediaRecorder.SetOutputFormat(OutputFormat.Mpeg4);
                         mediaRecorder.SetOutputFile(file);
@@ -204,7 +207,7 @@ internal class MauiCameraView: GridLayout
                         mediaRecorder.SetVideoSize(desiredSize.Width, desiredSize.Height);
 
                         VideoEncoder videoEncoder;
-                        AudioEncoder? audioEncoder = null;
+                        AudioEncoder audioEncoder;
 
                         //mediaRecorder.SetVideoEncoder(VideoEncoder.H264);
                         //mediaRecorder.SetAudioEncoder(AudioEncoder.Aac);
@@ -213,27 +216,25 @@ internal class MauiCameraView: GridLayout
                             && OperatingSystem.IsAndroidVersionAtLeast(33))
                         {
                             videoEncoder = VideoEncoder.Av1;
-                            audioEncoder = recordAudio ? AudioEncoder.Aac : (AudioEncoder?)null;
+                            audioEncoder = AudioEncoder.Aac;
                         }
                         else if (options?.SupportedVideoCodecs?.Contains("HEVC", StringComparer.OrdinalIgnoreCase) == true)
                         {
                             videoEncoder = VideoEncoder.Hevc;
-                            audioEncoder = recordAudio ? AudioEncoder.Aac : (AudioEncoder?)null;
+                            audioEncoder = AudioEncoder.Aac;
                         }
                         else
                         {
                             videoEncoder = VideoEncoder.H264;
-                            audioEncoder = recordAudio ? AudioEncoder.Aac : (AudioEncoder?)null;
+                            audioEncoder = AudioEncoder.Aac;
                         }
 
                         var bitRate = GetBitrateFromSize(videoEncoder, desiredSize);
                         mediaRecorder.SetVideoEncodingBitRate(bitRate);
                         mediaRecorder.SetVideoEncoder(videoEncoder);
-                        if (audioEncoder != null)
+                        if (recordAudio)
                         {
-                            audioManager.Mode = Mode.Normal;
-                            mediaRecorder.SetAudioSource(AudioSource.Mic);
-                            mediaRecorder.SetAudioEncoder(audioEncoder.Value);
+                            mediaRecorder.SetAudioEncoder(audioEncoder);
                         }
 
                         _logger.LogDebug("Recording options: {videoEncoder} ({w} x {h} @{fps} Hz (max), {mbit} Mbit/s)", videoEncoder, desiredSize.Width, desiredSize.Height, options?.MaxFrameRate ?? 30, bitRate / 131072);
