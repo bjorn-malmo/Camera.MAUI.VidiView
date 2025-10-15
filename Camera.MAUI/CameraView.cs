@@ -15,17 +15,26 @@ using DecodeDataType = System.Object;
 
 namespace Camera.MAUI;
 
-public record OtherRecordingParameters
+public record RecordingParameters
 {
-    public int Fps { get; init; }
-    public Func<int, int> HeightToDesiredBitrateFunc { get; init; }
-    public bool WithAudio { get; init; } = true;
+    /// <summary>
+    /// Record audio along with video
+    /// </summary>
+    public bool RecordAudio { get; init; }
+    /// <summary>
+    /// Maximum frames per second
+    /// </summary>
+    public required int MaxFrameRate { get; init; }
+
     public int? RotationRelativeToPortrait { get; init; } = null;
     public IEnumerable<string> SupportedVideoCodecs { get; init; } = null;
 }
 
 public class CameraView : View, ICameraView
 {
+    internal const float RestrictMaximumZoomFactor = 16f;
+    internal const float RestrictMinimumZoomFactor = 0.5f;
+
     public static readonly BindableProperty SelfProperty = BindableProperty.Create(nameof(Self), typeof(CameraView), typeof(CameraView), null, BindingMode.OneWayToSource);
     public static readonly BindableProperty FlashModeProperty = BindableProperty.Create(nameof(FlashMode), typeof(FlashMode), typeof(CameraView), FlashMode.Disabled);
     public static readonly BindableProperty TorchEnabledProperty = BindableProperty.Create(nameof(TorchEnabled), typeof(bool), typeof(CameraView), false);
@@ -455,7 +464,7 @@ public class CameraView : View, ICameraView
     /// <paramref name="file"/> Full path to file where video will be stored.
     /// <paramref name="Resolution"/> Sets the Video Resolution. It must be in Camera.AvailableResolutions. If width or height is 0, max resolution will be taken.
     /// </summary>
-    public async Task<CameraResult> StartRecordingAsync(string file, Size Resolution = default, OtherRecordingParameters otherRecordingParameters = null)
+    public async Task<CameraResult> StartRecordingAsync(string file, Size Resolution = default, RecordingParameters otherRecordingParameters = null)
     {
         CameraResult result = CameraResult.AccessError;
         if (Camera != null)

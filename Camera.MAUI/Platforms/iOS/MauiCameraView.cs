@@ -97,8 +97,8 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
                         DeviceId = device.UniqueID,
                         Position = position,
                         HasFlashUnit = device.FlashAvailable,
-                        MinZoomFactor = (float)device.MinAvailableVideoZoomFactor,
-                        MaxZoomFactor = (float)device.MaxAvailableVideoZoomFactor,
+                        MinZoomFactor = Math.Max(CameraView.RestrictMinimumZoomFactor, (float)device.MinAvailableVideoZoomFactor),
+                        MaxZoomFactor = Math.Min(CameraView.RestrictMaximumZoomFactor, (float)device.MaxAvailableVideoZoomFactor),
                         HorizontalViewAngle = device.ActiveFormat.VideoFieldOfView * MathF.PI / 180f,
                         AvailableResolutions = new() { new(1920, 1080), new(1280, 720), new(640, 480), new(352, 288) }
                     });
@@ -127,14 +127,14 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
         }
     }
 
-    public async Task<CameraResult> StartRecordingAsync(string file, Size Resolution, OtherRecordingParameters otherRecordingParameters)
+    public async Task<CameraResult> StartRecordingAsync(string file, Size Resolution, RecordingParameters otherRecordingParameters)
     {
         _logger.LogInformation("Start recording");
 
         CameraResult result = CameraResult.Success;
         if (initiated)
         {
-            var withAudio = otherRecordingParameters?.WithAudio ?? true;
+            var withAudio = otherRecordingParameters?.RecordAudio ?? true;
 
             if (started) StopCamera();
 
@@ -276,6 +276,8 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
 
     public async Task<CameraResult> StartCameraAsync(Size PhotosResolution)
     {
+        _logger.LogInformation("Start camera");
+
         CameraResult result = CameraResult.Success;
         if (initiated)
         {
@@ -318,10 +320,23 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
                 result = CameraResult.AccessDenied;
         }else
             result = CameraResult.NotInitiated;
+
+        if (result == CameraResult.Success)
+        {
+            _logger.LogDebug("Camera started");
+        }
+        else
+        {
+            _logger.LogWarning("Failed to start camera: {Result}", result);
+            System.Diagnostics.Debug.Assert(false, $"Failed to start camera: {result}");
+        }
+
         return result;
     }
     public CameraResult StopCamera()
     {
+        _logger.LogInformation("Stop camera");
+
         CameraResult result = CameraResult.Success;
         if (initiated)
         {
@@ -753,12 +768,12 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
         return retval;
     }
 
-     bool SelectBestRecordingResolution(AVCaptureDevice videoCaptureDevice, AVCaptureMovieFileOutput videoOutput, AVCaptureConnection videoOutputConnection,  Size wantedResolution, OtherRecordingParameters otherRecordingParameters)
+     bool SelectBestRecordingResolution(AVCaptureDevice videoCaptureDevice, AVCaptureMovieFileOutput videoOutput, AVCaptureConnection videoOutputConnection,  Size wantedResolution, RecordingParameters otherRecordingParameters)
     {
         bool retVal = true;
         // Resolve the desired video settings, defaulting to 720p30 whenever something seems broken
         desiredVideoResolution = (int)wantedResolution.Height;
-        desiredVideoFramerate = otherRecordingParameters?.Fps ?? 30;
+        desiredVideoFramerate = otherRecordingParameters?.MaxFrameRate ?? 30;
 
 
         desiredVideoResolution = Math.Min(desiredVideoResolution, 2160); // Higher blows up when trying to record

@@ -76,7 +76,7 @@ internal partial class CameraViewHandler : ViewHandler<CameraView, PlatformView>
         }
         return Task.Run(() => { return CameraResult.AccessError; });
     }
-    public Task<CameraResult> StartRecordingAsync(string file, Size Resolution, OtherRecordingParameters otherRecordingParameters)
+    public Task<CameraResult> StartRecordingAsync(string file, Size Resolution, RecordingParameters otherRecordingParameters)
     {
         if (PlatformView != null)
         {

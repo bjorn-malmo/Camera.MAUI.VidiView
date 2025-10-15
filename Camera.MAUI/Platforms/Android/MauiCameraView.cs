@@ -1,25 +1,27 @@
 ﻿using Android.Content;
-using Android.Widget;
-using Java.Util.Concurrent;
+using Android.Content.Res;
 using Android.Graphics;
-using CameraCharacteristics = Android.Hardware.Camera2.CameraCharacteristics;
 using Android.Hardware.Camera2;
-using Android.Media;
-using Android.Views;
-using Android.Util;
 using Android.Hardware.Camera2.Params;
-using Size = Android.Util.Size;
-using Class = Java.Lang.Class;
-using Rect = Android.Graphics.Rect;
-using SizeF = Android.Util.SizeF;
-using Android.Runtime;
+using Android.Media;
 using Android.OS;
 using Android.Renderscripts;
-using RectF = Android.Graphics.RectF;
-using Android.Content.Res;
+using Android.Runtime;
+using Android.Util;
+using Android.Views;
+using Android.Widget;
+using Java.Util.Concurrent;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using System.Diagnostics;
+using System.Linq;
 using Camera2 = Android.Hardware.Camera2;
+using CameraCharacteristics = Android.Hardware.Camera2.CameraCharacteristics;
+using Class = Java.Lang.Class;
+using Rect = Android.Graphics.Rect;
+using RectF = Android.Graphics.RectF;
+using Size = Android.Util.Size;
+using SizeF = Android.Util.SizeF;
 
 namespace Camera.MAUI.Platforms.Android;
 
@@ -89,7 +91,7 @@ internal class MauiCameraView: GridLayout
             cameraView.Cameras.Clear();
             foreach (var id in cameraManager.GetCameraIdList())
             {
-                var cameraInfo = new CameraInfo { DeviceId = id, MinZoomFactor = 1 };
+                var cameraInfo = new CameraInfo { DeviceId = id };
                 var chars = cameraManager.GetCameraCharacteristics(id);
                 if ((int)(chars.Get(CameraCharacteristics.LensFacing) as Java.Lang.Number) == (int)LensFacing.Back)
                 {
@@ -106,7 +108,8 @@ internal class MauiCameraView: GridLayout
                     cameraInfo.Name = "Camera " + id;
                     cameraInfo.Position = CameraPosition.Unknow;
                 }
-                cameraInfo.MaxZoomFactor = (float)(chars.Get(CameraCharacteristics.ScalerAvailableMaxDigitalZoom) as Java.Lang.Number);
+                cameraInfo.MinZoomFactor = Math.Max(CameraView.RestrictMinimumZoomFactor, 1f);
+                cameraInfo.MaxZoomFactor = Math.Min(CameraView.RestrictMaximumZoomFactor, (float)(chars.Get(CameraCharacteristics.ScalerAvailableMaxDigitalZoom) as Java.Lang.Number));
                 cameraInfo.HasFlashUnit = (bool)(chars.Get(CameraCharacteristics.FlashInfoAvailable) as Java.Lang.Boolean);
                 cameraInfo.AvailableResolutions = new();
                 try
@@ -157,15 +160,15 @@ internal class MauiCameraView: GridLayout
         }
     }
 
-    internal async Task<CameraResult> StartRecordingAsync(string file, Microsoft.Maui.Graphics.Size Resolution, OtherRecordingParameters otherRecordingParameters = null)
+    internal async Task<CameraResult> StartRecordingAsync(string file, Microsoft.Maui.Graphics.Size Resolution, RecordingParameters options = null)
     {
         _logger.LogInformation("Start recording");
 
         var result = CameraResult.Success;
         if (initiated && !recording)
         {
-            var withAudio = otherRecordingParameters?.WithAudio ?? true;
-            if (await CameraView.RequestPermissions(withAudio, true))
+            var recordAudio = options?.RecordAudio ?? false;
+            if (await CameraView.RequestPermissions(recordAudio, true))
             {
                 if (started) StopCamera();
                 if (cameraView.Camera != null)
@@ -175,8 +178,7 @@ internal class MauiCameraView: GridLayout
                         camChars = cameraManager.GetCameraCharacteristics(cameraView.Camera.DeviceId);
 
                         StreamConfigurationMap map = (StreamConfigurationMap)camChars.Get(CameraCharacteristics.ScalerStreamConfigurationMap);
-                        var outputSizes = map.GetOutputSizes(Class.FromType(typeof(ImageReader)));
-                        videoSize = ChooseVideoSize(outputSizes);
+                        //videoSize = ChooseVideoSize(map.GetOutputSizes(Class.FromType(typeof(ImageReader))));
                         recording = true;
 
                         if (File.Exists(file)) File.Delete(file);
@@ -185,63 +187,66 @@ internal class MauiCameraView: GridLayout
                             mediaRecorder = new MediaRecorder(context);
                         else
                             mediaRecorder = new MediaRecorder();
-                        audioManager.Mode = Mode.Normal;
 
-                        //HO changed
+                        //audioManager.Mode = Mode.Normal;
                         //mediaRecorder.SetAudioSource(AudioSource.Mic);
-                        if (withAudio)
-                        {
-                            audioManager.Mode = Mode.Normal;
-                            mediaRecorder.SetAudioSource(AudioSource.Mic);
-                        }
-
                         mediaRecorder.SetVideoSource(VideoSource.Surface);
                         mediaRecorder.SetOutputFormat(OutputFormat.Mpeg4);
                         mediaRecorder.SetOutputFile(file);
+                        //mediaRecorder.SetVideoEncodingBitRate(10_000_000);
+                        mediaRecorder.SetVideoFrameRate(options?.MaxFrameRate ?? 30);
 
-                        //TODO: HO verify this
-                        //mediaRecorder.SetVideoEncodingBitRate(10000000);
+                        Size desiredSize;
+                        if (Resolution.Width > 0 && Resolution.Height > 0)
+                            desiredSize = ChooseClosestMatch(map.GetOutputSizes(Class.FromType(typeof(ImageReader))), new((int)Resolution.Width, (int)Resolution.Height));
+                        else
+                            desiredSize = ChooseMaximum(map.GetOutputSizes(Class.FromType(typeof(ImageReader))));
+                        mediaRecorder.SetVideoSize(desiredSize.Width, desiredSize.Height);
 
-                        //TODO: HO verify this
-                        //mediaRecorder.SetVideoFrameRate(30);
-                        mediaRecorder.SetVideoFrameRate(otherRecordingParameters?.Fps ?? 30);
+                        VideoEncoder videoEncoder;
+                        AudioEncoder? audioEncoder = null;
 
-                        var maxVideoSize = ChooseMaxVideoSize(map.GetOutputSizes(Class.FromType(typeof(ImageReader))));
-                        if (Resolution.Width != 0 && Resolution.Height != 0)
-                            maxVideoSize = new((int)Resolution.Width, (int)Resolution.Height);
-                        mediaRecorder.SetVideoSize(maxVideoSize.Width, maxVideoSize.Height);
-
-                        //TODO: HO verify this
-                        //HO test setCaptureRate also
-                        mediaRecorder.SetVideoEncodingBitRate(otherRecordingParameters?.HeightToDesiredBitrateFunc?.Invoke((int)Resolution.Height) ?? 10_000_000);
-
-                        var strEncoder = otherRecordingParameters?.SupportedVideoCodecs?.FirstOrDefault();
-                        var encoder = strEncoder switch
-                        {
-                            "hevc" => VideoEncoder.Hevc,
-                            "h264" => VideoEncoder.H264,
-                            _ => VideoEncoder.H264
-                        };
-
-                        mediaRecorder.SetVideoEncoder(encoder);
-
-                        //HO changed
+                        //mediaRecorder.SetVideoEncoder(VideoEncoder.H264);
                         //mediaRecorder.SetAudioEncoder(AudioEncoder.Aac);
-                        if (withAudio)
+                        if (false 
+                            && options?.SupportedVideoCodecs?.Contains("AC01", StringComparer.OrdinalIgnoreCase) == true
+                            && OperatingSystem.IsAndroidVersionAtLeast(33))
                         {
-                            mediaRecorder.SetAudioEncoder(AudioEncoder.Aac);
+                            videoEncoder = VideoEncoder.Av1;
+                            audioEncoder = recordAudio ? AudioEncoder.Aac : (AudioEncoder?)null;
+                        }
+                        else if (options?.SupportedVideoCodecs?.Contains("HEVC", StringComparer.OrdinalIgnoreCase) == true)
+                        {
+                            videoEncoder = VideoEncoder.Hevc;
+                            audioEncoder = recordAudio ? AudioEncoder.Aac : (AudioEncoder?)null;
+                        }
+                        else
+                        {
+                            videoEncoder = VideoEncoder.H264;
+                            audioEncoder = recordAudio ? AudioEncoder.Aac : (AudioEncoder?)null;
                         }
 
+                        var bitRate = GetBitrateFromSize(videoEncoder, desiredSize);
+                        mediaRecorder.SetVideoEncodingBitRate(bitRate);
+                        mediaRecorder.SetVideoEncoder(videoEncoder);
+                        if (audioEncoder != null)
+                        {
+                            audioManager.Mode = Mode.Normal;
+                            mediaRecorder.SetAudioSource(AudioSource.Mic);
+                            mediaRecorder.SetAudioEncoder(audioEncoder.Value);
+                        }
 
-                        IWindowManager windowManager = context.GetSystemService(Context.WindowService).JavaCast<IWindowManager>();
+                        _logger.LogDebug("Recording options: {videoEncoder} ({w} x {h} @{fps} Hz (max), {mbit} Mbit/s)", videoEncoder, desiredSize.Width, desiredSize.Height, options?.MaxFrameRate ?? 30, bitRate / 131072);
+
+                        //IWindowManager windowManager = context.GetSystemService(Context.WindowService).JavaCast<IWindowManager>();
 
 
                         //HO changed
                         //int rotation = (int)windowManager.DefaultDisplay.Rotation;
-                        int rotation = otherRecordingParameters?.RotationRelativeToPortrait ?? (int)windowManager.DefaultDisplay.Rotation;
+                        //int rotation = options?.RotationRelativeToPortrait ?? (int)windowManager.DefaultDisplay.Rotation;
 
-                        int orientation = cameraView.Camera.Position == CameraPosition.Back ? orientation = ORIENTATIONS.Get(rotation) : orientation = ORIENTATIONSFRONT.Get(rotation);
-                        mediaRecorder.SetOrientationHint(orientation);
+                        //       int orientation = cameraView.Camera.Position == CameraPosition.Back ? orientation = ORIENTATIONS.Get(rotation) : orientation = ORIENTATIONSFRONT.Get(rotation);
+                        mediaRecorder.SetOrientationHint(0);
                         mediaRecorder.Prepare();
 
                         if (OperatingSystem.IsAndroidVersionAtLeast(28))
@@ -278,6 +283,17 @@ internal class MauiCameraView: GridLayout
 
         return result;
     }
+
+    private int GetBitrateFromSize(VideoEncoder encoder, Size desiredSize)
+    {
+        if (desiredSize.Height <= 720)
+            return 7;
+        else if (desiredSize.Height <= 1080)
+            return 14;
+        else 
+            return 20;
+    }
+
     private void StartPreview()
     {
         while (textureView.SurfaceTexture == null || !textureView.IsAvailable) Thread.Sleep(100);
@@ -340,6 +356,8 @@ internal class MauiCameraView: GridLayout
     }
     internal async Task<CameraResult> StartCameraAsync(Microsoft.Maui.Graphics.Size PhotosResolution)
     {
+        _logger.LogInformation("Start camera");
+
         var result = CameraResult.Success;
         if (initiated)
         {
@@ -353,11 +371,16 @@ internal class MauiCameraView: GridLayout
                         camChars = cameraManager.GetCameraCharacteristics(cameraView.Camera.DeviceId);
 
                         StreamConfigurationMap map = (StreamConfigurationMap)camChars.Get(CameraCharacteristics.ScalerStreamConfigurationMap);
-                        videoSize = ChooseVideoSize(map.GetOutputSizes(Class.FromType(typeof(ImageReader))));
-                        var maxVideoSize = ChooseMaxVideoSize(map.GetOutputSizes(Class.FromType(typeof(ImageReader))));
+
+                        //videoSize = ChooseVideoSize(map.GetOutputSizes(Class.FromType(typeof(ImageReader))));
+                        videoSize = ChoosePreviewSize(map.GetOutputSizes(Class.FromType(typeof(ImageReader))));
+
+                        //var maxVideoSize = ChooseMaxVideoSize(map.GetOutputSizes(Class.FromType(typeof(ImageReader))));
+                        var photoSize = ChoosePhotoResolution(map);
                         if (PhotosResolution.Width != 0 && PhotosResolution.Height != 0)
-                            maxVideoSize = new((int)PhotosResolution.Width, (int)PhotosResolution.Height);
-                        imgReader = ImageReader.NewInstance(maxVideoSize.Width, maxVideoSize.Height, ImageFormatType.Jpeg, 1);
+                            photoSize = new((int)PhotosResolution.Width, (int)PhotosResolution.Height);
+
+                        imgReader = ImageReader.NewInstance(photoSize.Width, photoSize.Height, ImageFormatType.Jpeg, 1);
                         backgroundThread = new HandlerThread("CameraBackground");
                         backgroundThread.Start();
                         backgroundHandler = new Handler(backgroundThread.Looper);
@@ -385,16 +408,34 @@ internal class MauiCameraView: GridLayout
         else
             result = CameraResult.NotInitiated;
 
+        if (result == CameraResult.Success)
+        {
+            _logger.LogDebug("Camera started");
+        }
+        else
+        {
+            _logger.LogWarning("Failed to start camera: {Result}", result);
+            System.Diagnostics.Debug.Assert(false, $"Failed to start camera: {result}");
+        }
+
         return result;
     }
     internal Task<CameraResult> StopRecordingAsync()
     {
-        recording = false;
-        return StartCameraAsync(cameraView.PhotosResolution);
+        // We never restart the camera here.
+        if (recording)
+        {
+            recording = false;
+            StopCamera();
+        }
+
+        return Task.FromResult(CameraResult.Success);
     }
 
     internal CameraResult StopCamera()
     {
+        _logger.LogInformation("Stop camera");
+
         CameraResult result = CameraResult.Success;
         if (initiated)
         {
@@ -576,7 +617,7 @@ internal class MauiCameraView: GridLayout
             try
             {
                 previewSession.Capture(singleRequest.Build(), null, null);
-                while (!captureDone) await Task.Delay(50);
+                while (!captureDone) await Task.Delay(10);
                 if (capturePhoto != null)
                 {
                     if (textureView.ScaleX == -1 || imageFormat != ImageFormat.JPEG)
@@ -1039,6 +1080,63 @@ internal class MauiCameraView: GridLayout
         return result;
     }
 
+    /// <summary>
+    /// Choose a resolution that matches the screen
+    /// </summary>
+    /// <param name="choices"></param>
+    /// <returns></returns>
+    private Size ChoosePreviewSize(Size[] choices)
+    {
+        return ChooseClosestMatch(choices, 
+            new Size((int)DeviceDisplay.Current.MainDisplayInfo.Width, 
+            (int)DeviceDisplay.Current.MainDisplayInfo.Height));
+    }
+
+    /// <summary>
+    /// Return the resolution with the most pixels
+    /// </summary>
+    /// <param name="map"></param>
+    /// <returns></returns>
+    private Size ChoosePhotoResolution(StreamConfigurationMap map)
+    {
+        return ChooseMaximum(map.GetHighResolutionOutputSizes((int)ImageFormatType.Jpeg)
+                      .Union(map.GetOutputSizes((int)ImageFormatType.Jpeg)));
+    }
+
+    private Size ChooseMaximum(IEnumerable<Size> choices)
+    {
+        return choices.OrderBy(x => x.Width * x.Height).Last();
+    }
+
+    private Size ChooseClosestMatch(IEnumerable<Size> choices, Size preferred)
+    {
+        Size bestChoice = choices.First();
+        double bestDiff = double.MaxValue;
+
+        foreach (Size size in choices)
+        {
+            // Calculate difference in aspect ratio and pixel count
+            double aspectRatioDisplay = (double)preferred.Width / preferred.Height;
+            double aspectRatioSize = (double)size.Width / size.Height;
+            double aspectDiff = Math.Abs(aspectRatioDisplay - aspectRatioSize);
+
+            // Prefer sizes that are not larger than the display
+            int pixelDiff = Math.Abs((size.Width * size.Height) - (preferred.Width * preferred.Height));
+
+            // Combine aspect and pixel diff for best match
+            double diff = aspectDiff * 1000 + pixelDiff;
+
+            if (diff < bestDiff)
+            {
+                bestDiff = diff;
+                bestChoice = size;
+            }
+        }
+
+        return bestChoice;
+    }
+
+
     private void AdjustAspectRatio(int videoWidth, int videoHeight)
     {
         Matrix txform = new();
@@ -1221,6 +1319,8 @@ internal class MauiCameraView: GridLayout
             cameraView.captureDone = true;
         }
     }
+
+
 }
 
 
