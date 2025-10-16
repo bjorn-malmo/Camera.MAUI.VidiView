@@ -898,7 +898,7 @@ internal class MauiCameraView: GridLayout
         }
 
         previewBuilder.Set(CaptureRequest.ControlMode, (int)ControlMode.Auto);
-        previewSession.SetRepeatingRequest(previewBuilder.Build(), null, null);
+        previewSession.Capture(previewBuilder.Build(), null, null);
 
         return true;
     }
