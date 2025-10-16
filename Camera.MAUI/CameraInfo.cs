@@ -10,7 +10,7 @@ public class CameraInfo
     public float MaxZoomFactor { get; internal set; }
     public float HorizontalViewAngle { get; internal set; }
     public float VerticalViewAngle { get; internal set; }
-
+    public float MinimumFocusDistance { get; internal set; }
     public List<Size> AvailableResolutions { get; internal set; }
     public override string ToString()
     {

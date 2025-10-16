@@ -111,6 +111,7 @@ internal class MauiCameraView: GridLayout
                 }
                 cameraInfo.MinZoomFactor = Math.Max(CameraView.RestrictMinimumZoomFactor, 1f);
                 cameraInfo.MaxZoomFactor = Math.Min(CameraView.RestrictMaximumZoomFactor, (float)(chars.Get(CameraCharacteristics.ScalerAvailableMaxDigitalZoom) as Java.Lang.Number));
+                cameraInfo.MinimumFocusDistance = (float?)(chars.Get(CameraCharacteristics.LensInfoMinimumFocusDistance) as Java.Lang.Float) ?? 0f;
                 cameraInfo.HasFlashUnit = (bool)(chars.Get(CameraCharacteristics.FlashInfoAvailable) as Java.Lang.Boolean);
                 cameraInfo.AvailableResolutions = new();
                 try
@@ -856,69 +857,6 @@ internal class MauiCameraView: GridLayout
         }
     }
 
-    public class SetFocusContext
-    {
-        public CameraCharacteristics CameraCharacteristics { get; set; }
-        public Rect ActiveArraySize { get; set; }
-        public int ControlMaxRegionsAf { get; set; }
-        public Java.Lang.Object OrgAfRegions { get; set; }
-    }
-
-    class ManualFocusEngaged_CaptureCallback : CameraCaptureSession.CaptureCallback
-    {
-        readonly MauiCameraView _mauiCameraView;
-        readonly ILogger _logger;
-        readonly SetFocusContext _setFocusContext;
-
-        public ManualFocusEngaged_CaptureCallback(MauiCameraView mauiCameraView, ILogger logger, SetFocusContext setFocusContext)
-        {
-            _mauiCameraView = mauiCameraView;
-            _logger = logger;
-            _setFocusContext = setFocusContext;
-        }
-
-        public override void OnCaptureCompleted(CameraCaptureSession session, CaptureRequest request, TotalCaptureResult result)
-        {
-            try
-            {
-                base.OnCaptureCompleted(session, request, result);
-                _mauiCameraView.ManualFocusEngaged = false;
-
-                var requestTag = (string)request.Tag;
-                if (requestTag == "FOCUS_TAG")
-                {
-                    //In some devices(Sony xperia G8142 etc..),CaptureRequest.CONTROL_AF_TRIGGER can not be set to null,or the camera throws an error. but how to solve this, I have no idea..
-                    //I found that setting CONTROL_AF_TRIGGER to CONTROL_AF_TRIGGER_IDLE instead of null works on Xperia devices.
-                    _mauiCameraView.previewBuilder.Set(CaptureRequest.ControlAfTrigger, (int)ControlAFTrigger.Idle);
-
-                    // (int)ControlAFTrigger.Idle);// bControlAFMode.T CaptureRequest.CONTROL_AF_TRIGGER, null);
-                    _mauiCameraView.previewSession.SetRepeatingRequest(_mauiCameraView.previewBuilder.Build(), null, null);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning($"{nameof(OnCaptureCompleted)}: failed: {ex.Message}");
-            }
-
-        }
-        public override void OnCaptureFailed(CameraCaptureSession session, CaptureRequest request, CaptureFailure failure)
-        {
-            try
-            {
-                base.OnCaptureFailed(session, request, failure);
-                var failureReason = (string)failure.Reason.ToString();
-                _logger.LogWarning($"{nameof(OnCaptureFailed)}: {failureReason}");
-                _mauiCameraView.ManualFocusEngaged = false;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning($"{nameof(OnCaptureFailed)}: failed: {ex.Message}");
-            }
-        }
-    }
-
-    SetFocusContext _setFocusContext = new SetFocusContext();
-    public bool ManualFocusEngaged { get; set; }
     private static Microsoft.Maui.Graphics.Rect CalculateScalerRect(Rect sensorRect, Single zoomFactor)
     {
         Rect m = sensorRect;
@@ -936,114 +874,70 @@ internal class MauiCameraView: GridLayout
 
     internal bool SetFocus(Microsoft.Maui.Graphics.Rect rect)// (Microsoft.Maui.Graphics.PointF pointRelativeToVisibleArea)
     {
-        // Get characteristics
-        if (_setFocusContext.CameraCharacteristics == null)
+        var maxCount = (int)camChars.Get(CameraCharacteristics.ControlMaxRegionsAf);
+        if (maxCount == 0)
         {
-            _setFocusContext.CameraCharacteristics = camChars;
-            _setFocusContext.ActiveArraySize = (Rect)_setFocusContext.CameraCharacteristics.Get(CameraCharacteristics.SensorInfoActiveArraySize);
-            _setFocusContext.ControlMaxRegionsAf = (int)_setFocusContext.CameraCharacteristics.Get(CameraCharacteristics.ControlMaxRegionsAf);
-            if (_setFocusContext.ControlMaxRegionsAf > 0)
-            {
-                _setFocusContext.OrgAfRegions = previewBuilder.Get(CaptureRequest.ControlAfRegions);
-            }
-        }
-
-        if (_setFocusContext.ControlMaxRegionsAf == 0)
-        {
-            //no af regions allowed return
+            // Manual focus not supported
             _focusRect = Microsoft.Maui.Graphics.Rect.Zero;
             return false;
         }
-
         _focusRect = rect;
-        if (rect == Microsoft.Maui.Graphics.Rect.Zero)
-        { //revert to autofocus
-            //HO must set it to the original regions null does not work
-            previewBuilder.Set(CaptureRequest.ControlAfRegions, _setFocusContext.OrgAfRegions);
-            //previewBuilder.Set(CaptureRequest.ControlAfMode, (int)ControlAFMode.ContinuousPicture);// (int)ControlAFTrigger.Idle);// bControlAFMode.T CaptureRequest.CONTROL_AF_TRIGGER, null);
-            previewSession.SetRepeatingRequest(previewBuilder.Build(), null, null);
-            return true;
-        }
 
-
-        //HO in this code we assume:
-        //   - cameraView.Height always matches sensor.Width
-        //   - sensor is rotated 90 degrees relative to phone up
-        //   - what we se is the middle of the sensor
-
-        var activeArraySize = _setFocusContext.ActiveArraySize;
-
-        var fakeCameraViewWidthInCameraViewUnits = (cameraView.Height / activeArraySize.Width()) * activeArraySize.Height();
-        var fakeXOffsetInCameraViewUnits = (fakeCameraViewWidthInCameraViewUnits - cameraView.Width) / 2;
-
-        var fakeCameraViewX = (rect.Center.X + fakeXOffsetInCameraViewUnits);
-        var fakeCameraViewY = (rect.Center.Y);
-
-        //calculate focusrect if somebody wants it
-
-
-        var sensorTouchAreaExtent = (activeArraySize.Width() * (rect.Height / cameraView.Height));
-        var usedSensorArray = new Rect(0, 0, activeArraySize.Width(), activeArraySize.Height());
-
-        //handle zoom
-        if (cameraView.ZoomFactor != 1f)
+        bool focusLock = rect != Microsoft.Maui.Graphics.Rect.Zero;
+        if (focusLock)
         {
-            usedSensorArray = CalculateScalerRect(usedSensorArray, cameraView.ZoomFactor);
-            sensorTouchAreaExtent = sensorTouchAreaExtent / cameraView.ZoomFactor;
+            previewBuilder.Set(CaptureRequest.ControlAfMode, (int)ControlAFMode.Auto);
+            previewBuilder.Set(CaptureRequest.ControlAfRegions, new[] { CalculateFocusRect(rect) });
+            previewBuilder.Set(CaptureRequest.ControlAfTrigger, (int)ControlAFTrigger.Start);
         }
-        //rotate
-        var sensorX = (usedSensorArray.Left + (usedSensorArray.Width() * (fakeCameraViewY / cameraView.Height)));
-        var sensorY = usedSensorArray.Top + (usedSensorArray.Height() * (1 - (fakeCameraViewX / fakeCameraViewWidthInCameraViewUnits)));
+        else
+        {
+            previewBuilder.Set(CaptureRequest.ControlAfMode, (int)ControlAFMode.ContinuousPicture);
+            previewBuilder.Set(CaptureRequest.ControlAfRegions, new[] { NoRect() });
+            previewBuilder.Set(CaptureRequest.ControlAfTrigger, (int)ControlAFTrigger.Idle);
+        }
 
-
-        // Create MeteringRectangle
-        var sensorRect = new Microsoft.Maui.Graphics.Rect((sensorX - (sensorTouchAreaExtent / 2)),
-             (sensorY - (sensorTouchAreaExtent / 2)),
-             sensorTouchAreaExtent,
-             sensorTouchAreaExtent);
-
-
-        //_logger_LogTrace?.Invoke($"Converting from view coordinates too sensor coordinates");
-        //_logger_LogTrace?.Invoke($"CameraView Size: {new Microsoft.Maui.Graphics.Size(this.Width, this.Height)} Sensor size: {new Microsoft.Maui.Graphics.Size(activeArraySize.Width(), activeArraySize.Height())}  ");
-        //_logger_LogTrace?.Invoke($"CameraView Focus Rect: {rect} Sensor Focus Rect: {sensorRect}  ");
-
-
-        var focusAreaTouch = new MeteringRectangle(
-             (int)sensorRect.Left,
-             (int)sensorRect.Top,
-             (int)sensorRect.Width,
-             (int)sensorRect.Height,
-             MeteringRectangle.MeteringWeightMax
-        );
-
-
-//#if TAP_TO_FOCUS_CONTINIOUS
-        previewBuilder.Set(CaptureRequest.ControlAfRegions, new MeteringRectangle[] { focusAreaTouch });
+        previewBuilder.Set(CaptureRequest.ControlMode, (int)ControlMode.Auto);
         previewSession.SetRepeatingRequest(previewBuilder.Build(), null, null);
-//#else
-//        //first stop the existing repeating request
-//        previewSession.StopRepeating();
 
-//        //cancel any existing AF trigger (repeated touches, etc.)
-//        previewBuilder.Set(CaptureRequest.ControlAfTrigger, (int)ControlAFTrigger.Cancel);// CameraMetadata.Cance //CONTROL_AF_TRIGGER_CANCEL);
-//        previewBuilder.Set(CaptureRequest.ControlAfMode, (int)ControlAFMode.Off);//CONTROL_AF_MODE_OFF);
-//        var manualFocusEngagedCaptureCallback = new ManualFocusEngaged_CaptureCallback(this, _logger, _setFocusContext);
-//        previewSession.Capture(previewBuilder.Build(), manualFocusEngagedCaptureCallback, null);
-
-
-//        //Now add a new AF trigger with focus region
-//        previewBuilder.Set(CaptureRequest.ControlMode, (int)ControlMode.Auto);  //.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
-//        previewBuilder.Set(CaptureRequest.ControlAfMode, (int)ControlAFMode.Auto); //CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_AUTO);
-//        previewBuilder.Set(CaptureRequest.ControlAfTrigger, (int)ControlAFTrigger.Start); //CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_START);
-//        previewBuilder.SetTag("FOCUS_TAG"); //we'll capture this later for resuming the preview
-//        previewBuilder.Set(CaptureRequest.ControlAfRegions, new MeteringRectangle[] { focusAreaTouch });
-//        //then we ask for a single request (not repeating!)
-//        previewSession.Capture(previewBuilder.Build(), manualFocusEngagedCaptureCallback, null);
-//        ManualFocusEngaged = true;
-//#endif
         return true;
     }
 
+    private MeteringRectangle NoRect()
+    {
+        var sensorSize = (Rect)camChars.Get(CameraCharacteristics.SensorInfoActiveArraySize);
+        return new MeteringRectangle(
+            0, 0, sensorSize.Width(), sensorSize.Height(), MeteringRectangle.MeteringWeightDontCare);
+    }
+    private MeteringRectangle CalculateFocusRect(Microsoft.Maui.Graphics.Rect rect)
+    {
+        var sensorSize = (Rect)camChars.Get(CameraCharacteristics.SensorInfoActiveArraySize);
+        var csx = cameraView.Width / sensorSize.Width();
+        var csy = cameraView.Height / sensorSize.Height();
+
+        double x, y;
+        int focusSize = (int)Math.Round(sensorSize.Width() / 40f);
+
+        if (csy > csx)
+        {
+            x = rect.Center.X / csy + (sensorSize.Width() - (cameraView.Width / csy)) / 2;
+            y = rect.Center.Y / csy;
+        }
+        else
+        {
+            x = rect.Center.X / csx;
+            y = rect.Center.Y / csx + (sensorSize.Height() - (cameraView.Height / csx)) / 2;
+        }
+
+        var r = new MeteringRectangle(
+            (int)(x - focusSize * .5f),
+            (int)(y - focusSize * .5f),
+            focusSize,
+            focusSize,
+            MeteringRectangle.MeteringWeightMax);
+
+        return r;
+    }
 
     private static Size ChooseMaxVideoSize(Size[] choices)
     {
