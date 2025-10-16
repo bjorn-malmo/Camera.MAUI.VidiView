@@ -111,7 +111,7 @@ internal class MauiCameraView: GridLayout
                 }
                 cameraInfo.MinZoomFactor = Math.Max(CameraView.RestrictMinimumZoomFactor, 1f);
                 cameraInfo.MaxZoomFactor = Math.Min(CameraView.RestrictMaximumZoomFactor, (float)(chars.Get(CameraCharacteristics.ScalerAvailableMaxDigitalZoom) as Java.Lang.Number));
-                cameraInfo.MinimumFocusDistance = (float?)(chars.Get(CameraCharacteristics.LensInfoMinimumFocusDistance) as Java.Lang.Float) ?? 0f;
+               // cameraInfo.MinimumFocusDistance = (float?)(chars.Get(CameraCharacteristics.LensInfoMinimumFocusDistance) as Java.Lang.Float) ?? 0f;
                 cameraInfo.HasFlashUnit = (bool)(chars.Get(CameraCharacteristics.FlashInfoAvailable) as Java.Lang.Boolean);
                 cameraInfo.AvailableResolutions = new();
                 try
