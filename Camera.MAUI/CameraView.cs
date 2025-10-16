@@ -25,9 +25,10 @@ public record RecordingParameters
     /// Maximum frames per second
     /// </summary>
     public required int MaxFrameRate { get; init; }
-
-    public int? RotationRelativeToPortrait { get; init; } = null;
-    public IEnumerable<string> SupportedVideoCodecs { get; init; } = null;
+    /// <summary>
+    /// The allowed video codecs
+    /// </summary>
+    public IEnumerable<string> AllowedVideoCodecs { get; init; } = null;
 }
 
 public class CameraView : View, ICameraView

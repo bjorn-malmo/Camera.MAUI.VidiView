@@ -204,19 +204,19 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
                         captureSession.AddOutput(recordOutput);
                         var movieFileOutputConnection = recordOutput.Connections[0];
                         
-                        var currentDeviceOrientation = UIDevice.CurrentDevice.Orientation;
-                        if (otherRecordingParameters.RotationRelativeToPortrait != null)
-                        {
-                            currentDeviceOrientation = otherRecordingParameters.RotationRelativeToPortrait switch
-                            {
-                                90 => UIDeviceOrientation.LandscapeLeft,
-                                180 => UIDeviceOrientation.PortraitUpsideDown,
-                                270 => UIDeviceOrientation.LandscapeRight,
-                                _ => UIDeviceOrientation.Portrait
-                            };
-                        }
+                        //var currentDeviceOrientation = UIDevice.CurrentDevice.Orientation;
+                        //if (otherRecordingParameters.RotationRelativeToPortrait != null)
+                        //{
+                        //    currentDeviceOrientation = otherRecordingParameters.RotationRelativeToPortrait switch
+                        //    {
+                        //        90 => UIDeviceOrientation.LandscapeLeft,
+                        //        180 => UIDeviceOrientation.PortraitUpsideDown,
+                        //        270 => UIDeviceOrientation.LandscapeRight,
+                        //        _ => UIDeviceOrientation.Portrait
+                        //    };
+                        //}
                         
-                        movieFileOutputConnection.VideoOrientation = (AVCaptureVideoOrientation)currentDeviceOrientation;
+                     //   movieFileOutputConnection.VideoOrientation = (AVCaptureVideoOrientation)currentDeviceOrientation;
                         
 
                         if(!SelectBestRecordingResolution(captureDevice, recordOutput, movieFileOutputConnection,  Resolution, otherRecordingParameters))
@@ -912,7 +912,7 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
                 Debug($"failed to set video format:{error}");
             }
         }
-        var supportedVideoCodecs = (otherRecordingParameters?.SupportedVideoCodecs?.Any(x => x.Any()) ?? false) ? (otherRecordingParameters?.SupportedVideoCodecs) : new string[] { _strH264 };
+        var supportedVideoCodecs = (otherRecordingParameters?.AllowedVideoCodecs?.Any(x => x.Any()) ?? false) ? (otherRecordingParameters?.AllowedVideoCodecs) : new string[] { _strH264 };
 
         Debug($"want one of these codecs: {string.Join(", ", supportedVideoCodecs)}");
         var availableVideoCodecTypes = videoOutput.AvailableVideoCodecTypes.Select(x => x.ToString());
