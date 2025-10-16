@@ -359,6 +359,12 @@ internal class MauiCameraView: GridLayout
     {
         _logger.LogInformation("Start camera");
 
+        if (started)
+        {
+            _logger.LogDebug("Already started");
+            return CameraResult.Success;
+        }
+
         var result = CameraResult.Success;
         if (initiated)
         {
