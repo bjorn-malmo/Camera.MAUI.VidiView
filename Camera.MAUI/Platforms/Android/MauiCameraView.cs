@@ -27,6 +27,8 @@ namespace Camera.MAUI.Platforms.Android;
 
 internal class MauiCameraView: GridLayout
 {
+    private const int MBps = 1000000; 
+
     private readonly CameraView cameraView;
     private IExecutorService executorService;
     private bool started = false;
@@ -290,11 +292,11 @@ internal class MauiCameraView: GridLayout
     private int GetBitrateFromSize(VideoEncoder encoder, Size desiredSize)
     {
         if (desiredSize.Height <= 720)
-            return 7;
+            return 7 * MBps;
         else if (desiredSize.Height <= 1080)
-            return 14;
+            return 14 * MBps;
         else 
-            return 20;
+            return 20 * MBps;
     }
 
     private void StartPreview()
