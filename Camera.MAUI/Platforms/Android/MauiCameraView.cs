@@ -436,6 +436,7 @@ internal class MauiCameraView: GridLayout
         // We never restart the camera here.
         if (recording)
         {
+            _logger.LogInformation("Stop recording");
             recording = false;
             StopCamera();
         }
@@ -730,8 +731,8 @@ internal class MauiCameraView: GridLayout
                     ImageFormat.JPEG => Bitmap.CompressFormat.Jpeg,
                     _ => Bitmap.CompressFormat.Png
                 };
-                using FileStream stream = new(SnapFilePath, FileMode.OpenOrCreate);
-                bitmap.Compress(iformat, 80, stream);
+                using FileStream stream = new(SnapFilePath, FileMode.Create);
+                bitmap.Compress(iformat, 95, stream);
                 stream.Close();
                 bitmap.Dispose();
             }
