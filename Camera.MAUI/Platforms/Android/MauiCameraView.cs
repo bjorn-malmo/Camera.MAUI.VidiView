@@ -205,9 +205,9 @@ internal class MauiCameraView: GridLayout
 
                         Size desiredSize;
                         if (Resolution.Width > 0 && Resolution.Height > 0)
-                            desiredSize = ChooseClosestMatch(map.GetOutputSizes(Class.FromType(typeof(ImageReader))), new((int)Resolution.Width, (int)Resolution.Height));
+                            desiredSize = map.GetOutputSizes(Class.FromType(typeof(ImageReader))).ChooseClosestMatch(new((int)Resolution.Width, (int)Resolution.Height));
                         else
-                            desiredSize = ChooseMaximum(map.GetOutputSizes(Class.FromType(typeof(ImageReader))));
+                            desiredSize = map.GetOutputSizes(Class.FromType(typeof(ImageReader))).ChooseMaximum();
                         mediaRecorder.SetVideoSize(desiredSize.Width, desiredSize.Height);
 
                         VideoEncoder videoEncoder;
@@ -614,7 +614,7 @@ internal class MauiCameraView: GridLayout
 
             var rotation = GetJpegOrientation(deviceRotation);
             singleRequest.Set(CaptureRequest.JpegOrientation, rotation);
-            singleRequest.Set(CaptureRequest.JpegQuality, Java.Lang.Byte.ValueOf(95));
+            singleRequest.Set(CaptureRequest.JpegQuality, Java.Lang.Byte.ValueOf((sbyte)(CameraView.JpegQuality * 100)));
 
             if (OperatingSystem.IsAndroidVersionAtLeast(30))
             {
@@ -732,7 +732,7 @@ internal class MauiCameraView: GridLayout
                     _ => Bitmap.CompressFormat.Png
                 };
                 using FileStream stream = new(SnapFilePath, FileMode.Create);
-                bitmap.Compress(iformat, 95, stream);
+                bitmap.Compress(iformat, (int)( CameraView.JpegQuality * 100), stream);
                 stream.Close();
                 bitmap.Dispose();
             }
@@ -984,8 +984,7 @@ internal class MauiCameraView: GridLayout
     /// <returns></returns>
     private Size ChoosePreviewSize(Size[] choices)
     {
-        return ChooseClosestMatch(choices, 
-            new Size((int)DeviceDisplay.Current.MainDisplayInfo.Width, 
+        return choices.ChooseClosestMatch(new Size((int)DeviceDisplay.Current.MainDisplayInfo.Width, 
             (int)DeviceDisplay.Current.MainDisplayInfo.Height));
     }
 
@@ -996,43 +995,11 @@ internal class MauiCameraView: GridLayout
     /// <returns></returns>
     private Size ChoosePhotoResolution(StreamConfigurationMap map)
     {
-        return ChooseMaximum(map.GetHighResolutionOutputSizes((int)ImageFormatType.Jpeg)
-                      .Union(map.GetOutputSizes((int)ImageFormatType.Jpeg)));
+        IEnumerable<Size> available = map.GetHighResolutionOutputSizes((int)ImageFormatType.Jpeg)
+            .Union(map.GetOutputSizes((int)ImageFormatType.Jpeg));
+
+        return available.ChooseMaximum();
     }
-
-    private Size ChooseMaximum(IEnumerable<Size> choices)
-    {
-        return choices.OrderBy(x => x.Width * x.Height).Last();
-    }
-
-    private Size ChooseClosestMatch(IEnumerable<Size> choices, Size preferred)
-    {
-        Size bestChoice = choices.First();
-        double bestDiff = double.MaxValue;
-
-        foreach (Size size in choices)
-        {
-            // Calculate difference in aspect ratio and pixel count
-            double aspectRatioDisplay = (double)preferred.Width / preferred.Height;
-            double aspectRatioSize = (double)size.Width / size.Height;
-            double aspectDiff = Math.Abs(aspectRatioDisplay - aspectRatioSize);
-
-            // Prefer sizes that are not larger than the display
-            int pixelDiff = Math.Abs((size.Width * size.Height) - (preferred.Width * preferred.Height));
-
-            // Combine aspect and pixel diff for best match
-            double diff = aspectDiff * 1000 + pixelDiff;
-
-            if (diff < bestDiff)
-            {
-                bestDiff = diff;
-                bestChoice = size;
-            }
-        }
-
-        return bestChoice;
-    }
-
 
     private void AdjustAspectRatio(int videoWidth, int videoHeight)
     {

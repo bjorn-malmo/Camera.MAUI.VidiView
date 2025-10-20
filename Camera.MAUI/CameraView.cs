@@ -35,6 +35,7 @@ public class CameraView : View, ICameraView
 {
     internal const float RestrictMaximumZoomFactor = 16f;
     internal const float RestrictMinimumZoomFactor = 0.5f;
+    internal const float JpegQuality = 0.95f;
 
     public static readonly BindableProperty SelfProperty = BindableProperty.Create(nameof(Self), typeof(CameraView), typeof(CameraView), null, BindingMode.OneWayToSource);
     public static readonly BindableProperty FlashModeProperty = BindableProperty.Create(nameof(FlashMode), typeof(FlashMode), typeof(CameraView), FlashMode.Disabled);
