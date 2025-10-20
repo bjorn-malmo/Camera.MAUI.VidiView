@@ -319,7 +319,7 @@ public class CameraView : View, ICameraView
     /// <summary>
     /// A static reference to the last CameraView created.
     /// </summary>
-    public static CameraView Current { get; set; }
+//    public static CameraView Current { get; set; }
 
     internal DateTime lastSnapshot = DateTime.Now;
     internal Size PhotosResolution = new(0, 0);
@@ -327,7 +327,7 @@ public class CameraView : View, ICameraView
     public CameraView()
     {
         HandlerChanged += CameraView_HandlerChanged;
-        Current = this;
+//        Current = this;
     }
     private void CameraView_HandlerChanged(object sender, EventArgs e)
     {

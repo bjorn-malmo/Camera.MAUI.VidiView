@@ -16,11 +16,11 @@ namespace Camera.MAUI.Platforms.Apple;
 
 internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDelegate, IAVCaptureFileOutputRecordingDelegate, IAVCapturePhotoCaptureDelegate
 {
-    readonly NSDictionary<NSString, NSObject> jpegCodec =
-        //        new([AVVideo.CodecKey], [new NSString("jpeg")]);
-        //        new ([AVVideo.CodecKey, AVVideo.QualityKey], [new NSString("jpeg"), new NSNumber(CameraView.JpegQuality)]);
-        new([AVVideo.CodecKey, AVVideo.CompressionPropertiesKey], 
-            [new NSString("jpeg"), new NSDictionary<NSString, NSObject>([AVVideo.QualityKey], [new NSNumber(CameraView.JpegQuality)])]
+    readonly NSDictionary<NSString, NSObject> jpegWithQualityCodec =
+        new([AVVideo.CodecKey, 
+             AVVideo.CompressionPropertiesKey], 
+            [new NSString("jpeg"), 
+             new NSDictionary<NSString, NSObject>([AVVideo.QualityKey], [new NSNumber(CameraView.JpegQuality)])]
         );
 
     private AVCaptureDevice[] camDevices;
@@ -456,7 +456,7 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
 
     private async Task<Stream> TakePhotoAsync(AVCapturePhotoOutput photoOrSnapshotOutput, ImageFormat imageFormat, int? rotation)
     {
-        var photoSettings = AVCapturePhotoSettings.FromFormat(jpegCodec);
+        var photoSettings = AVCapturePhotoSettings.FromFormat(jpegWithQualityCodec);
         if (OperatingSystem.IsIOSVersionAtLeast(13))
         {
             photoSettings.AutoVirtualDeviceFusionEnabled = true;
