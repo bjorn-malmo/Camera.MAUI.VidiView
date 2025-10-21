@@ -446,8 +446,57 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
     }
     internal bool SetFocus(Microsoft.Maui.Graphics.Rect rect)// (Microsoft.Maui.Graphics.PointF pointRelativeToVisibleArea)
     {
+        if (cameraView.Camera != null && captureDevice != null && captureDevice.IsFocusModeSupported(AVCaptureFocusMode.AutoFocus))
+        {
+            CoreGraphics.CGPoint pt = rect == Microsoft.Maui.Graphics.Rect.Zero 
+                ? new CoreGraphics.CGPoint(0.5, 0.5) 
+                : CalculateFocusPoint(rect);
+
+            captureDevice.LockForConfiguration(out NSError error);
+            if (error == null)
+            {
+                if (captureDevice.FocusPointOfInterestSupported)
+                {
+                    captureDevice.FocusPointOfInterest = pt;
+
+                    if (captureDevice.IsFocusModeSupported(AVCaptureFocusMode.ContinuousAutoFocus))
+                        captureDevice.FocusMode = AVCaptureFocusMode.ContinuousAutoFocus;
+                    else if (captureDevice.IsFocusModeSupported(AVCaptureFocusMode.AutoFocus))
+                        captureDevice.FocusMode = AVCaptureFocusMode.AutoFocus;
+                }
+
+                if (captureDevice.ExposurePointOfInterestSupported)
+                {
+                    captureDevice.ExposurePointOfInterest = pt;
+
+                    if (captureDevice.IsExposureModeSupported(AVCaptureExposureMode.ContinuousAutoExposure))
+                        captureDevice.ExposureMode = AVCaptureExposureMode.ContinuousAutoExposure;
+                    else if (captureDevice.IsExposureModeSupported(AVCaptureExposureMode.AutoExpose))
+                        captureDevice.ExposureMode = AVCaptureExposureMode.AutoExpose;
+                }
+
+                captureDevice.UnlockForConfiguration();
+
+                return true;
+            }
+        }
         return false;
     }
+
+    CoreGraphics.CGPoint CalculateFocusPoint(Microsoft.Maui.Graphics.Rect rect)
+    {
+        float x = (float)(rect.Center.X / cameraView.Width);
+        float y = (float)(rect.Center.Y / cameraView.Height);
+
+        // This property’s CGPoint value uses a coordinate system where {0,0} is the top-left of the 
+        // picture area and {1,1} is the bottom-right. This coordinate system is always relative to 
+        // a landscape device orientation with the home button on the right, regardless of the actual 
+        // device orientation
+
+        return new CoreGraphics.CGPoint(1f - x, y);
+    }
+    
+
     public void UpdateTorch()
     {
         if (captureDevice != null && cameraView != null)

@@ -203,7 +203,7 @@ public class CameraView : View, ICameraView
         get
         {
             // Determine the minimum zoom factor supported
-            return (from c in Cameras where !c.IsVirtual select c.MinZoomFactor).Min();
+            return (from c in Cameras where !c.IsVirtual select c.MinZoomFactor).DefaultIfEmpty().Min();
         }
     }
     /// <summary>
@@ -217,7 +217,7 @@ public class CameraView : View, ICameraView
         {
             // Determine the minimum zoom factor supported
             var allowedDigitalZoomLevel = 2f;
-            return (from c in Cameras where !c.IsVirtual select c.MinZoomFactor).Max() * allowedDigitalZoomLevel;
+            return (from c in Cameras where !c.IsVirtual select c.MinZoomFactor).DefaultIfEmpty().Max() * allowedDigitalZoomLevel;
         }
     }
     /// <summary>
