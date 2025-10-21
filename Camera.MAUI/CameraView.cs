@@ -33,9 +33,7 @@ public record RecordingParameters
 
 public class CameraView : View, ICameraView
 {
-    internal const float RestrictMaximumZoomFactor = 16f;
-    internal const float RestrictMinimumZoomFactor = 0.5f;
-    internal const float JpegQuality = 0.95f;
+    internal const float JpegQuality = 0.98f;
 
     public static readonly BindableProperty SelfProperty = BindableProperty.Create(nameof(Self), typeof(CameraView), typeof(CameraView), null, BindingMode.OneWayToSource);
     public static readonly BindableProperty FlashModeProperty = BindableProperty.Create(nameof(FlashMode), typeof(FlashMode), typeof(CameraView), FlashMode.Disabled);
@@ -198,29 +196,28 @@ public class CameraView : View, ICameraView
         set { SetValue(ZoomFactorProperty, value); }
     }
     /// <summary>
-    /// Indicates the minimum zoom factor for the camera in use. This property is refreshed when the "Camera" property change.
+    /// Determine the minimum zoom factor
     /// </summary>
     public float MinZoomFactor
     {
         get
         {
-            if (Camera != null)
-                return Camera.MinZoomFactor;
-            else
-                return 1f;
+            // Determine the minimum zoom factor supported
+            return (from c in Cameras where !c.IsVirtual select c.MinZoomFactor).Min();
         }
     }
     /// <summary>
-    /// Indicates the maximum zoom factor for the camera in use. This property is refreshed when the "Camera" property change.
+    /// Determine the maximum zoom factor.
+    /// Consider the fact that these cameras do not have changeable optical zoom,
+    /// so the minimum zoom factor is the actual zoom factor of the device.
     /// </summary>
     public float MaxZoomFactor
     {
         get
         {
-            if (Camera != null)
-                return Camera.MaxZoomFactor;
-            else
-                return 1f;
+            // Determine the minimum zoom factor supported
+            var allowedDigitalZoomLevel = 2f;
+            return (from c in Cameras where !c.IsVirtual select c.MinZoomFactor).Max() * allowedDigitalZoomLevel;
         }
     }
     /// <summary>
@@ -333,6 +330,9 @@ public class CameraView : View, ICameraView
     {
         if (Handler != null)
         {
+            if (_loggerFactory != null && Handler is CameraViewHandler handler)
+                handler.SetLogger(_loggerFactory);
+
             CamerasLoaded?.Invoke(this, EventArgs.Empty);
             MicrophonesLoaded?.Invoke(this, EventArgs.Empty);
             Self = this;
@@ -618,12 +618,15 @@ public class CameraView : View, ICameraView
         return true;
     }
 
+    private ILoggerFactory? _loggerFactory;
+
     /// <summary>
     /// Inject logger factory
     /// </summary>
     /// <param name="loggerFactory"></param>
     public void SetLogger(ILoggerFactory loggerFactory)
     {
+        _loggerFactory = loggerFactory;
         if (Handler is CameraViewHandler handler)
         {
             handler.SetLogger(loggerFactory);

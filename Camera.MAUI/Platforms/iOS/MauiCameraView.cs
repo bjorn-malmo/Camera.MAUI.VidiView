@@ -101,7 +101,8 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
                 {
                     // Specify types in the order of preference
                     cameraDiscoverySession = AVCaptureDeviceDiscoverySession.Create(
-                        new AVCaptureDeviceType[] { AVCaptureDeviceType.BuiltInTripleCamera, AVCaptureDeviceType.BuiltInDualWideCamera, AVCaptureDeviceType.BuiltInWideAngleCamera }, AVMediaTypes.Video, AVCaptureDevicePosition.Back);
+                        new AVCaptureDeviceType[] { AVCaptureDeviceType.BuiltInTripleCamera, AVCaptureDeviceType.BuiltInDualWideCamera, AVCaptureDeviceType.BuiltInWideAngleCamera, AVCaptureDeviceType.BuiltInUltraWideCamera, AVCaptureDeviceType.BuiltInTelephotoCamera
+             }, AVMediaTypes.Video, AVCaptureDevicePosition.Back);
                 }
                 else
                 {
@@ -111,26 +112,36 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
 
                 camDevices = cameraDiscoverySession.Devices;
                 cameraView.Cameras.Clear();
-                foreach (var device in camDevices)
+                foreach (AVCaptureDevice device in camDevices)
                 {
                     _logger.LogDebug("Camera device: {n}, z={min}-{max}, f={f} ({b}), wb={wb}", device.LocalizedName, device.MinAvailableVideoZoomFactor, device.MaxAvailableVideoZoomFactor,
                         device.FocusMode, device.SmoothAutoFocusEnabled, device.WhiteBalanceMode);
-
 
                     CameraPosition position = device.Position switch
                     {
                         AVCaptureDevicePosition.Back => CameraPosition.Back,
                         AVCaptureDevicePosition.Front => CameraPosition.Front,
                         _ => CameraPosition.Unknow
-                    };                    
+                    };
+
+                    float multiplier = 1f;
+                    if (OperatingSystem.IsIOSVersionAtLeast(18))
+                    {
+                        multiplier = (float)device.DisplayVideoZoomFactorMultiplier;
+                    }
+
                     cameraView.Cameras.Add(new CameraInfo
                     {
                         Name = device.LocalizedName,
                         DeviceId = device.UniqueID,
                         Position = position,
+                        IsVirtual = device.VirtualDevice,
                         HasFlashUnit = device.FlashAvailable,
-                        MinZoomFactor = Math.Max(CameraView.RestrictMinimumZoomFactor, (float)device.MinAvailableVideoZoomFactor),
-                        MaxZoomFactor = Math.Min(CameraView.RestrictMaximumZoomFactor, (float)device.MaxAvailableVideoZoomFactor),
+                        MinZoomFactor = (float)device.MinAvailableVideoZoomFactor * multiplier,
+                        MaxZoomFactor = (float)device.MaxAvailableVideoZoomFactor * multiplier,
+                        ZoomFactorMultiplier = multiplier,
+                        MinimumFocusDistance = (float)device.MinimumFocusDistance,
+                        SupportsFixedFocus = device.IsFocusModeSupported(AVCaptureFocusMode.Locked),
                         HorizontalViewAngle = device.ActiveFormat.VideoFieldOfView * MathF.PI / 180f,
                         AvailableResolutions = new() { new(1920, 1080), new(1280, 720), new(640, 480), new(352, 288) }
                     });
@@ -363,9 +374,6 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
                         captureSession.RemoveInput(input);
                         input.Dispose();
                     }
-
-                    captureDevice?.Dispose();
-                    captureDevice = null;
                 }
                 started = false;
             }
@@ -409,11 +417,15 @@ internal class MauiCameraView : UIView, IAVCaptureVideoDataOutputSampleBufferDel
     {
         if (cameraView.Camera != null && captureDevice != null)
         {
+            var f = Math.Clamp(zoom / cameraView.Camera.ZoomFactorMultiplier, cameraView.Camera.MinZoomFactor, cameraView.Camera.MaxZoomFactor);
+
             captureDevice.LockForConfiguration(out NSError error);
             if (error == null)
             {
-                captureDevice.VideoZoomFactor = Math.Clamp(zoom, cameraView.Camera.MinZoomFactor, cameraView.Camera.MaxZoomFactor);
+                captureDevice.VideoZoomFactor = f;
                 captureDevice.UnlockForConfiguration();
+
+                _logger.LogDebug("Set zoom factor: requested={Requested}, applied={Applied}", zoom, captureDevice.VideoZoomFactor);
             }
         }
     }
